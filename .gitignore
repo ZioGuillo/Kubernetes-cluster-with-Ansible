@@ -1,0 +1,9 @@
+# Ansible
+.ansible/
+
+# Common files
+*.log
+*.tmp
+*.swp
+
+.DS_Store
