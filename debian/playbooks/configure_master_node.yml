@@ -1,0 +1,88 @@
+---
+- hosts: kubernetes_master_nodes
+  become: true
+  vars_files:
+    - env_variables
+
+  tasks:
+    - name: Install iproute2 for traffic control
+      apt:
+        name: iproute2
+        state: present
+
+    - name: Ensure containerd is installed and updated
+      apt:
+        name: containerd
+        state: latest
+
+    - name: Remove custom containerd config to use default
+      file:
+        path: /etc/containerd/config.toml
+        state: absent
+
+    - name: Restart and enable containerd to apply default configuration
+      systemd:
+        name: containerd
+        state: restarted
+        enabled: yes
+
+    - name: Add master node hostname and IP to /etc/hosts
+      lineinfile:
+        path: /etc/hosts
+        line: "{{ ansible_default_ipv4.address }} {{ ansible_fqdn }}"
+        state: present
+
+    - name: Stop and disable UFW (Ubuntu's default firewall, if required by your network policy)
+      service:
+        name: ufw
+        state: stopped
+        enabled: false
+
+    - name: Reset Kubernetes cluster
+      shell: kubeadm reset --force
+      ignore_errors: true
+
+    - name: Initializing Kubernetes cluster
+      shell: >
+        kubeadm init --pod-network-cidr={{ cidr_v }}
+      register: kubeadm_init
+
+    - name: Store kubeadm init output
+      local_action:
+        module: copy
+        content: "{{ kubeadm_init.stdout }}"
+        dest: "{{ token_file }}"
+      when: 
+        - kubeadm_init is defined
+        - "'stdout' in kubeadm_init"
+
+    - name: Check if Kubernetes cluster is ready
+      shell: kubectl get nodes
+      register: kubectl_get_nodes
+      retries: 30
+      delay: 10
+      until: kubectl_get_nodes.rc == 0
+      become: true
+      when: inventory_hostname in groups['kubernetes_master_nodes']
+
+    - name: Configure kubeconfig for local administration
+      block:
+        - name: Create .kube directory
+          file:
+            path: "$HOME/.kube"
+            state: directory
+            mode: 0755
+
+        - name: Copy admin.conf to user's kube config
+          copy:
+            src: "/etc/kubernetes/admin.conf"
+            dest: "$HOME/.kube/config"
+            remote_src: yes
+            owner: "{{ ansible_user_id }}"
+            group: "{{ ansible_user_gid }}"
+            mode: 0644
+      when: kubeadm_init is defined and 'stdout' in kubeadm_init
+
+    - name: Install Network Add-on (e.g., Flannel)
+      shell: kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+      when: kubeadm_init is defined and 'stdout' in kubeadm_init

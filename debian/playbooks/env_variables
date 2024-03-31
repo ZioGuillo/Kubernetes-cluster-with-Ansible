@@ -1,0 +1,17 @@
+ad_addr: 
+cidr_v: 10.244.0.0/16
+kubernetes_version: 1.29.3
+ansible_user_id: zioguillo
+ansible_user_gid: zioguillo
+
+k8s_version: "1.29.3"
+k8s_major_version: "1.29"
+k8s_url_apt_key: "https://pkgs.k8s.io/core:/stable:/v1.29/deb/Release.key"
+k8s_gpgpath: "/usr/share/keyrings/kubernetes-apt-keyring.gpg"
+k8s_repository: "https://pkgs.k8s.io/core:/stable:/v1.29/deb/"
+
+
+# Based on https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/#check-required-ports
+# and https://coreos.com/flannel/docs/latest/troubleshooting.html (Firewalls section)
+
+token_file: join_token

@@ -1,0 +1,111 @@
+---
+- hosts: all
+  become: true
+  vars_files:
+    - env_variables.yml
+
+  tasks:
+    - name: Update the apt package index
+      apt:
+        update_cache: yes
+
+    - name: Install packages needed for the apt repository
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+        state: latest
+
+    - name: Ensure /etc/apt/keyrings directory exists
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: Check if Docker GPG key exists
+      ansible.builtin.stat:
+        path: /etc/apt/keyrings/docker.gpg
+      register: docker_gpg_key
+
+    - name: Add Docker GPG key
+      ansible.builtin.shell:
+        cmd: |
+          curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+      when: not docker_gpg_key.stat.exists
+
+    - name: Add Docker repository
+      ansible.builtin.apt_repository:
+        repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: present
+        filename: docker
+
+    - name: Update apt package index
+      apt:
+        update_cache: yes
+
+    - name: Check if Kubernetes GPG key exists
+      ansible.builtin.stat:
+        path: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+      register: k8s_gpg_key
+
+    - name: Add Kubernetes GPG key
+      ansible.builtin.shell:
+        cmd: |
+          curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.29/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+      when: not k8s_gpg_key.stat.exists
+
+    - name: Add Kubernetes repository
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.29/deb/ /"
+        state: present
+        filename: kubernetes
+
+    - name: Update apt package index
+      apt:
+        update_cache: yes
+
+    - name: Install Kubernetes packages and Docker CE
+      apt:
+        name: "{{ item }}"
+        state: latest
+      loop:
+        - docker-ce
+        - kubeadm
+        - kubelet
+        - kubectl
+      notify: Hold Kubernetes packages
+
+    - name: Restart and enable containerd service
+      systemd:
+        name: containerd
+        state: restarted
+        enabled: true
+
+    - name: Start and enable kubelet
+      systemd:
+        name: kubelet
+        state: started
+        enabled: true
+
+  handlers:
+    - name: Hold Kubernetes packages
+      apt:
+        name: "{{ item }}"
+        state: hold
+      loop:
+        - kubeadm
+        - kubelet
+        - kubectl
+
+    # Set hostnames based on the inventory hostnames for the nodes
+    - name: Set hostname for kubernetes-master
+      hostname:
+        name: k8master-ubu
+      when: inventory_hostname == 'kubernetes-master'
+
+    - name: Set hostname for kubernetes-worker1
+      hostname:
+        name: k8node01-ubu
+      when: inventory_hostname == 'kubernetes-worker1'

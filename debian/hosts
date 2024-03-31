@@ -1,0 +1,16 @@
+[kubernetes_master_nodes]
+kubernetes-master ansible_host=
+
+[kubernetes_worker_nodes]
+kubernetes-worker1 ansible_host=
+
+[kubernetes:children]
+kubernetes_worker_nodes
+kubernetes_master_nodes
+
+[kubernetes:vars]
+ansible_password=
+ansible_ssh_user=
+
+[all:vars]
+ansible_become_pass=

@@ -1,0 +1,62 @@
+---
+- name: Generate join command on Kubernetes master node
+  hosts: kubernetes_master_nodes
+  become: true
+  tasks:
+    - name: Generate a new join token and output to a local file
+      shell: sudo kubeadm token create --print-join-command
+      register: join_command
+      run_once: true
+
+    - name: Ensure the join.sh file is empty before writing
+      file:
+        path: /tmp/join.sh
+        state: absent
+
+    - name: Save the join command to a file
+      copy:
+        content: "{{ join_command.stdout }}"
+        dest: /tmp/join.sh
+      when: join_command.changed
+
+- name: Prepare worker nodes for joining the Kubernetes cluster
+  hosts: kubernetes_worker_nodes
+  become: true
+  vars_files:
+    - env_variables
+
+  tasks:
+    - name: Remove existing containerd configuration file
+      file:
+        path: /etc/containerd/config.toml
+        state: absent
+
+    - name: Restart containerd service to apply new configuration
+      systemd:
+        name: containerd
+        state: restarted
+        enabled: yes
+
+    - name: copy the join script from the master node
+      copy:
+        src: "/tmp/join.sh"
+        dest: "/tmp/join.sh"
+
+    - name: Ensure join script is executable
+      file:
+        path: "/tmp/join.sh"
+        mode: '0755'
+
+    - name: Resetting kubeadm on worker nodes (if needed)
+      command: sudo kubeadm reset -f
+      ignore_errors: true
+
+    - name: Joining worker nodes to the Kubernetes cluster
+      command: sudo sh "/tmp/join.sh"
+      register: join_result
+      ignore_errors: true
+
+    - name: Check join result
+      fail:
+        msg: "Failed to join the Kubernetes cluster"
+      when: join_result.rc != 0

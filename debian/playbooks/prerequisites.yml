@@ -1,0 +1,24 @@
+---
+- hosts: all
+  become: true
+  vars_files:
+    - env_variables
+  tasks:
+    - name: Disabling Swap on all nodes
+      shell: swapoff -a
+
+    - name: Commenting Swap entries in /etc/fstab
+      ansible.builtin.replace:
+        path: /etc/fstab
+        regexp: '^\s*([^#\n]+swap\s+.*)$'
+        replace: '#\1'
+        backup: yes
+
+    - name: Add IPs to /etc/hosts on master and workers
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        regexp: '.*{{ item }}$'
+        line: "{{ hostvars[item].ansible_host }} {{ item }}"
+        state: present
+      when: hostvars[item].ansible_host is defined
+      with_items: "{{ groups.all }}"
