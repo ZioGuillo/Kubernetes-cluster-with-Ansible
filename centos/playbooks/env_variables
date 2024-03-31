@@ -1,0 +1,31 @@
+ad_addr: 
+cidr_v: 10.244.0.0/16
+kubernetes_version: 1.29.3
+ansible_user_id: 
+ansible_user_gid: 
+
+packages:
+- kubeadm
+- kubectl
+
+services:
+- docker
+- kubelet
+- firewalld
+
+# Based on https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/#check-required-ports
+# and https://coreos.com/flannel/docs/latest/troubleshooting.html (Firewalls section)
+master_ports:
+- "6443/tcp"
+- "2379-2380/tcp"
+- "10250-10252/tcp"
+- "8285/udp"
+- "8472/udp"
+
+worker_ports:
+- "10250/tcp"
+- "8285/udp"
+- "8472/udp"
+- "30000-32767/tcp"
+
+token_file: join_token

@@ -1,0 +1,76 @@
+---
+- hosts: all
+  become: true
+  vars_files:
+    - env_variables
+  tasks:
+    - name: Creating a repository file for Kubernetes
+      file:
+        path: /etc/yum.repos.d/kubernetes.repo
+        state: touch
+
+    - name: Adding repository details in Kubernetes repo file
+      blockinfile:
+        path: /etc/yum.repos.d/kubernetes.repo
+        block: |
+          [kubernetes]
+          name=Kubernetes
+          baseurl=https://pkgs.k8s.io/core:/stable:/v1.29/rpm/
+          enabled=1
+          gpgcheck=1
+          gpgkey=https://pkgs.k8s.io/core:/stable:/v1.29/rpm/repodata/repomd.xml.key
+
+    - name: Installing Docker, firewalld, and necessary tools
+      yum:
+        name:
+          - firewalld
+          - yum-utils
+          - device-mapper-persistent-data
+          - lvm2
+          - iproute-tc  # Provides the 'tc' command
+          - containerd.io  # Container runtime
+        state: latest
+
+    - name: Add Docker repository
+      yum_repository:
+        name: docker-ce
+        description: Docker CE Stable - $releasever
+        baseurl: https://download.docker.com/linux/centos/7/$basearch/stable
+        gpgcheck: 1
+        gpgkey: https://download.docker.com/linux/centos/gpg
+
+    - name: Install Kubernetes packages
+      yum:
+        name:
+          - kubeadm-1.29.3
+          - kubelet-1.29.3
+          - kubectl-1.29.3
+        state: present
+
+    - name: Restart and enable containerd service
+      service:
+        name: containerd
+        state: restarted
+        enabled: true
+
+    - name: Start and enable kubelet
+      service:
+        name: kubelet
+        state: started
+        enabled: true
+
+    - name: Set hostname for kubernetes-master
+      hostname:
+        name: k8master
+      when: inventory_hostname == 'kubernetes-master'
+
+    - name: Set hostname for kubernetes-worker1
+      hostname:
+        name: k8node01
+      when: inventory_hostname == 'kubernetes-worker1'
+
+    - name: Set hostname for kubernetes-worker2
+      hostname:
+        name: k8node02
+      when: inventory_hostname == 'kubernetes-worker2'
+

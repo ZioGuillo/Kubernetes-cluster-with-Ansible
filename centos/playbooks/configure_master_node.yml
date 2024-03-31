@@ -1,0 +1,75 @@
+---
+- hosts: kubernetes_master_nodes
+  become: true
+  vars_files:
+    - env_variables
+
+  tasks:
+    - name: Install iproute for traffic control
+      yum:
+        name: iproute-tc
+        state: present
+
+    - name: Ensure containerd is installed and updated
+      yum:
+        name: containerd.io
+        state: latest
+
+    - name: Remove custom containerd config to use default
+      file:
+        path: /etc/containerd/config.toml
+        state: absent
+
+    - name: Restart and enable containerd to apply default configuration
+      systemd:
+        name: containerd
+        state: restarted
+        enabled: yes
+
+    - name: Add master node hostname and IP to /etc/hosts
+      lineinfile:
+        path: /etc/hosts
+        line: "{{ ansible_default_ipv4.address }} {{ ansible_fqdn }}"
+        state: present
+
+    - name: Stop and disable firewalld (if required by your network policy)
+      systemd:
+        name: firewalld
+        state: stopped
+        enabled: false
+
+    - name: Initializing Kubernetes cluster
+      shell: >
+        kubeadm init --pod-network-cidr={{ cidr_v }}
+      register: kubeadm_init
+
+    - name: Store kubeadm init output
+      local_action:
+        module: copy
+        content: "{{ kubeadm_init.stdout }}"
+        dest: "{{ token_file }}"
+      when: 
+        - kubeadm_init is defined
+        - "'stdout' in kubeadm_init"
+
+    - name: Configure kubeconfig for local administration
+      block:
+        - name: Create .kube directory
+          file:
+            path: "$HOME/.kube"
+            state: directory
+            mode: 0755
+
+        - name: Copy admin.conf to user's kube config
+          copy:
+            src: "/etc/kubernetes/admin.conf"
+            dest: "$HOME/.kube/config"
+            remote_src: yes
+            owner: "{{ ansible_user_id }}"
+            group: "{{ ansible_user_gid }}"
+            mode: 0644
+      when: kubeadm_init is defined and 'stdout' in kubeadm_init
+
+    - name: Install Network Add-on (e.g., Flannel)
+      shell: kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+      when: kubeadm_init is defined and 'stdout' in kubeadm_init
