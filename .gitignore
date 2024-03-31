@@ -7,3 +7,6 @@
 *.swp
 
 .DS_Store
+.env_variables
+.env
+.hosts
